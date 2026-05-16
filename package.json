@@ -8,9 +8,5 @@
     "typescript": "^5"
   },
   "private": true,
-  "scripts": {
-    "dev": "bun --watch core/index.ts",
-    "dev:node": "node --watch --experimental-specifier-resolution=node core/index.ts"
-  },
   "type": "module"
 }
