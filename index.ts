@@ -1,6 +1,10 @@
-import { Bruno } from "@core";
+import { Bruno } from "./core/bruno";
 
 const app = new Bruno();
+
+app.get("/", async (context) => {
+  context.send("Welcome to Bruno!");
+});
 
 app.get("/hello", async (context) => {
   context.send("Hello, Bruno!");
@@ -11,7 +15,4 @@ app.get<{ params: { id: string } }>("/user/:id", async (context) => {
   context.send(`User ID: ${userId}`);
 });
 
-export default {
-  port: 3000,
-  fetch: app.fetch.bind(app),
-};
+export default app;

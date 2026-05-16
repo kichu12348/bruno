@@ -4,80 +4,33 @@ import type {
   Handler,
   BrunoContext,
 } from "../types";
+import { BrunoContextImpl } from "../Context";
 
 export async function createReply(
   request: BrunoRequest<RouteGeneric>,
   handler: Handler<RouteGeneric>,
 ): Promise<Response> {
-  let body = "";
-  let status = 200;
-  const headers = {} as Record<string, string>;
-  let sent = false;
-
-  // json: () => req.json(),
-  //     text: () => req.text(),
-  //     get query() {
-  //       const url = new URL(req.url);
-  //       return Object.fromEntries(url.searchParams.entries());
-  //     },
-
-  request.json = () => request.json();
-  request.text = () => request.text();
-  request.query = () => {
-    const url = new URL(request.url);
-    return Object.fromEntries(url.searchParams.entries());
-  };
-
-  const ctx: BrunoContext<RouteGeneric> = {
-    req: request,
-    send: (content, options) => {
-      if (!sent) {
-        body = content;
-        status = options?.status ?? status;
-        sent = true;
-      }
-    },
-    json: (data, options) => {
-      if (!sent) {
-        body = JSON.stringify(data);
-        headers["Content-Type"] = "application/json";
-        status = options?.status ?? status;
-        sent = true;
-      }
-    },
-    status: (code: number) => {
-      if (!sent) {
-        headers["Status"] = code.toString();
-      }
-    },
-    headers: (newHeaders: Record<string, string>) => {
-      if (!sent) {
-        for (const [key, value] of Object.entries(newHeaders)) {
-          headers[key] = value;
-        }
-      }
-    },
-  };
+  const ctx = new BrunoContextImpl(request);
 
   const result = await handler(ctx);
 
-  if (sent) {
-    return new Response(body, {
-      status,
-      headers: headers,
+  if (ctx.sent) {
+    return new Response(ctx.body, {
+      status: ctx.statusCode,
+      headers: ctx.responseHeaders,
     });
   } else if (result instanceof Response) {
     return result;
   } else if (typeof result === "object" && result !== null) {
-    headers["Content-Type"] = "application/json";
+    ctx.responseHeaders["Content-Type"] = "application/json";
     return new Response(JSON.stringify(result), {
-      status,
-      headers: headers,
+      status: ctx.statusCode,
+      headers: ctx.responseHeaders,
     });
   } else if (typeof result === "string") {
     return new Response(result, {
-      status,
-      headers: headers,
+      status: ctx.statusCode,
+      headers: ctx.responseHeaders,
     });
   }
 

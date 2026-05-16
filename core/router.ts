@@ -7,6 +7,10 @@ class RouterNode {
     [method in RequestType]?: Handler<RouteGeneric>;
   };
 
+  handlerIds: {
+    [method in RequestType]?: string;
+  };
+
   paramChild: RouterNode | null;
   paramName: string | null;
 
@@ -14,6 +18,7 @@ class RouterNode {
     this.children = new Map();
     this.params = {};
     this.handlers = {};
+    this.handlerIds = {};
     this.paramChild = null;
     this.paramName = null;
   }
@@ -21,6 +26,9 @@ class RouterNode {
 
 export class RouterTree {
   root: RouterNode;
+
+  handlerMap: Record<string, Handler> = {};
+  private routeCounter = 0;
 
   constructor() {
     this.root = new RouterNode();
@@ -45,6 +53,10 @@ export class RouterTree {
       }
     }
     currentNode.handlers[method] = handler;
+
+    const id = `route_${this.routeCounter++}`;
+    currentNode.handlerIds[method] = id;
+    this.handlerMap[id] = handler;
   }
 
   findRoute(
@@ -85,52 +97,70 @@ export class RouterTree {
   }
 
   buildCode(): string {
-    let code = `export const f = (p: string, method: RequestType) => {\n`;
+    let code = `return function(handlers) {\n`;
+    code += `  return function(p, method) {\n`;
 
     const rootMethods = Object.keys(this.root.handlers) as RequestType[];
     if (rootMethods.length > 0) {
-      code += `  if (p === "/" || p === "") {\n`;
+      code += `    if (p === "/" || p === "") {\n`;
       for (const method of rootMethods) {
-        code += `    if (method === "${method}") return { handler: ${this.root.handlers[method]}, params: {} };\n`;
+        code += `      if (method === "${method}") return { handler: handlers["${this.root.handlerIds[method]}"], params: {} };\n`;
       }
-      code += `  }\n`;
+      code += `    }\n`;
     }
 
-    code += `  const segments = p.split("/").filter(Boolean);\n`;
-    code += `  const params: Record<string, string> = {};\n`;
-    code += `  const len = segments.length;\n\n`;
+    code += `    const segments = p.split("/").filter(Boolean);\n`;
+    code += `    const params = {};\n`;
+    code += `    const len = segments.length;\n\n`;
 
     const buildNodeCode = (node: RouterNode, depth: number): string => {
       let nodeCode = "";
-      const indent = "  ".repeat(depth + 1);
+      const indent = "    ".repeat(depth + 1);
 
+      // 1. Check endpoints if we are at the target length
       const nodeMethods = Object.keys(node.handlers) as RequestType[];
       if (nodeMethods.length > 0) {
         nodeCode += `${indent}if (len === ${depth}) {\n`;
         for (const method of nodeMethods) {
-          nodeCode += `${indent}  if (method === "${method}") return { handler: ${node.handlers[method]}, params };\n`;
+          nodeCode += `${indent}  if (method === "${method}") return { handler: handlers["${node.handlerIds[method]}"], params };\n`;
         }
         nodeCode += `${indent}}\n`;
       }
 
-      for (const [segment, childNode] of node.children) {
-        if (segment.startsWith(":")) {
-          const paramName = segment.slice(1);
-          nodeCode += `${indent}if (len > ${depth}) {\n`;
-          nodeCode += `${indent}  params["${paramName}"] = segments[${depth}];\n`;
+      // 2. Dive into children if we still have segments
+      if (node.children.size > 0 || node.paramChild) {
+        nodeCode += `${indent}if (len > ${depth}) {\n`;
+
+        // Scope the segment to this exact depth to prevent collisions
+        nodeCode += `${indent}  const seg${depth} = segments[${depth}];\n`;
+
+        let hasStatic = false;
+
+        // Check exact static matches first
+        for (const [segment, childNode] of node.children) {
+          nodeCode += `${indent}  ${hasStatic ? "else " : ""}if (seg${depth} === "${segment}") {\n`;
           nodeCode += buildNodeCode(childNode, depth + 1);
-          nodeCode += `${indent}}\n`;
-        } else {
-          nodeCode += `${indent}if (segments[${depth}] === "${segment}") {\n`;
-          nodeCode += buildNodeCode(childNode, depth + 1);
-          nodeCode += `${indent}}\n`;
+          nodeCode += `${indent}  }\n`;
+          hasStatic = true;
         }
+
+        // Fallback to dynamic parameter if no static matches
+        if (node.paramChild) {
+          nodeCode += `${indent}  ${hasStatic ? "else " : ""}{\n`;
+          nodeCode += `${indent}    params["${node.paramName}"] = seg${depth};\n`;
+          nodeCode += buildNodeCode(node.paramChild, depth + 1);
+          nodeCode += `${indent}  }\n`;
+        }
+
+        nodeCode += `${indent}}\n`;
       }
+
       return nodeCode;
     };
 
     code += buildNodeCode(this.root, 0);
-    code += `  return null;\n};\n`;
+    code += `    return null;\n`;
+    code += `  };\n};\n`;
     return code;
   }
 }

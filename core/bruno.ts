@@ -11,6 +11,10 @@ import type {
 
 export class Bruno {
   routerTree: RouterTree;
+  private compiledRouter?: (
+    path: string,
+    method: RequestType,
+  ) => { handler: Handler; params: Record<string, string> } | null;
 
   constructor() {
     this.routerTree = new RouterTree();
@@ -80,11 +84,17 @@ export class Bruno {
     this.registerRoute("PATCH", path, finalHandler);
   }
 
-  async fetch(req: BrunoRequest<RouteGeneric>): Promise<Response> {
-    const url = new URL(req.url);
+  public compile() {
+    const code = this.routerTree.buildCode();
+    const factory = new Function(code)();
+    this.compiledRouter = factory(this.routerTree.handlerMap);
+  }
+
+  fetch = async (req: BrunoRequest<RouteGeneric>): Promise<Response> => {
+    const pathname = pathParser(req.url);
 
     const route = this.routerTree.findRoute(
-      url.pathname,
+      pathname,
       req.method as RequestType,
     );
     if (route) {
@@ -97,5 +107,14 @@ export class Bruno {
     }
 
     return new Response("Not Found", { status: 404 });
-  }
+  };
 }
+
+const pathParser = (url: string) => {
+  const pathStart = url.indexOf("/", 8);
+  const queryStart = url.indexOf("?", pathStart);
+
+  return queryStart === -1
+    ? url.slice(pathStart)
+    : url.slice(pathStart, queryStart);
+};
