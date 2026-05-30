@@ -11,10 +11,10 @@ import type {
 
 export class Bruno {
   routerTree: RouterTree;
-  private compiledRouter?: (
-    path: string,
-    method: RequestType,
-  ) => { handler: Handler; params: Record<string, string> } | null;
+  // private compiledRouter?: (
+  //   path: string,
+  //   method: RequestType,
+  // ) => { handler: Handler; params: Record<string, string> } | null;
 
   constructor() {
     this.routerTree = new RouterTree();
@@ -84,10 +84,20 @@ export class Bruno {
     this.registerRoute("PATCH", path, finalHandler);
   }
 
-  public compile() {
-    const code = this.routerTree.buildCode();
-    const factory = new Function(code)();
-    this.compiledRouter = factory(this.routerTree.handlerMap);
+  public route(prefix: string, instance: Bruno) {
+    const node = this.routerTree.getNodeByPath(prefix);
+    node.paramChild = instance.routerTree.root.paramChild;
+    node.paramName = instance.routerTree.root.paramName;
+    Object.assign(this.routerTree.handlerMap, instance.routerTree.handlerMap);
+    Object.assign(node.handlers, instance.routerTree.root.handlers);
+    Object.assign(node.handlerIds, instance.routerTree.root.handlerIds);
+
+    for (const [key, value] of instance.routerTree.root.children.entries()) {
+      node.children.set(key, value);
+    }
+    // what this does is essentially mount the entire router tree of the provided instance
+    // onto the current instance at the specified prefix path. This allows for modular route
+    // definitions and better organization of routes in larger applications.
   }
 
   fetch = async (req: BrunoRequest<RouteGeneric>): Promise<Response> => {
@@ -97,6 +107,7 @@ export class Bruno {
       pathname,
       req.method as RequestType,
     );
+
     if (route) {
       const { handler, params } = route;
       req.params = params;

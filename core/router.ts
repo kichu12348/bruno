@@ -28,10 +28,36 @@ export class RouterTree {
   root: RouterNode;
 
   handlerMap: Record<string, Handler> = {};
-  private routeCounter = 0;
+  private static routeCounter = 0;
 
   constructor() {
     this.root = new RouterNode();
+  }
+
+  getNodeByPath(path: string): RouterNode {
+    const segments = path.split("/").filter(Boolean);
+    let currentNode = this.root;
+    for (const segment of segments) {
+      const child = currentNode.children.get(segment);
+      if (child) {
+        currentNode = child;
+      } else if (currentNode.paramChild) {
+        currentNode = currentNode.paramChild;
+      } else {
+        // if no node then create a new one and continue
+        if (segment.startsWith(":")) {
+          const newNode = new RouterNode();
+          currentNode.paramChild = newNode;
+          currentNode.paramName = segment.slice(1);
+          currentNode = newNode;
+        } else {
+          const newNode = new RouterNode();
+          currentNode.children.set(segment, newNode);
+          currentNode = newNode;
+        }
+      }
+    }
+    return currentNode;
   }
 
   addRoute(path: string, method: RequestType, handler: Handler) {
@@ -54,7 +80,7 @@ export class RouterTree {
     }
     currentNode.handlers[method] = handler;
 
-    const id = `route_${this.routeCounter++}`;
+    const id = `route_${RouterTree.routeCounter++}`;
     currentNode.handlerIds[method] = id;
     this.handlerMap[id] = handler;
   }
@@ -71,9 +97,15 @@ export class RouterTree {
     let params: Record<string, string> | null = null;
 
     for (let i = 0; i <= path.length; i++) {
+      console.log(
+        `Checking segment: ${path.charAt(i)} at index ${i} charCode: ${path.charCodeAt(i)}`,
+      );
       if (path.charCodeAt(i) === 47 || i === path.length) {
         const segment = path.slice(start, i);
         start = i + 1;
+
+        // Skip empty segments except for trailing slash
+        if (!segment) continue;
 
         const child = currentNode.children.get(segment);
         if (child) {

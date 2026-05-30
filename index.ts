@@ -15,4 +15,23 @@ app.get<{ params: { id: string } }>("/user/:id", async (context) => {
   context.send(`User ID: ${userId}`);
 });
 
-export default app;
+const books = new Bruno();
+books.get("/", async (context) => {
+  context.send("List of books");
+});
+
+books.get<{ params: { id: string } }>("/:id", async (context) => {
+  const bookId = context.req.params.id;
+  context.send(`Book ID: ${bookId}`);
+});
+
+app.route("/books", books);
+
+Bun.serve({
+  fetch: app.fetch,
+  port: 3000,
+});
+
+console.log("Server is running on http://localhost:3000");
+
+// export default app;
